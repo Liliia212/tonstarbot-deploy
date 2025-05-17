@@ -17,11 +17,15 @@ user_state = {}
 def get_ton_price():
     try:
         url = "https://api.coingecko.com/api/v3/simple/price"
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
         params = {"ids": "the-open-network", "vs_currencies": "usd"}
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, headers=headers, timeout=10)
         data = response.json()
         return float(data["the-open-network"]["usd"])
-    except:
+    except Exception as e:
+        print(f"Ошибка при получении курса TON: {e}")
         return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
