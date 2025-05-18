@@ -117,7 +117,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = f"{amount} TON по {store} ≈ {total_usd:.2f} $ ≈ {total_stars:.0f} звёзд"
 
     await update.message.reply_text(result)
-
+ # Обработка сообщений от пользователя разработчику
+async def issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    text = update.message.text.replace("/issue", "").strip()
+    if not text:
+        await update.message.reply_text("Напиши проблему после команды /issue.")
+        return
+    message = f"Сообщение от @{user.username or user.id} (ID: {user.id}):\n{text}"
+    await context.bot.send_message(chat_id=developer_id, text=message)
+    await update.message.reply_text("Спасибо! Я передал сообщение разработчику.")
 def main():
     app = ApplicationBuilder().token("7612436248:AAGSzcdng_0HsCwk9WzjqG_rOveZzV-0dGI").build()
 
