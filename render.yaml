@@ -3,5 +3,5 @@ services:
     name: tonstar-convert-bot
     env: python
     buildCommand: ""
-    startCommand: "python ton_star_bot_stateless_with_followup.py"
+    startCommand: python ton_star_bot_stateless_with_followup.py
     autoDeploy: true
