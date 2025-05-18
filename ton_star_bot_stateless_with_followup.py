@@ -1,6 +1,6 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
+    Application,
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
@@ -9,25 +9,27 @@ from telegram.ext import (
 )
 import requests
 
+# Telegram ID разработчика
+DEVELOPER_ID = 863589590
+
+# Курсы
 STORE_USD_PER_STAR = 0.0239
 FRAGMENT_USD_PER_STAR = 0.015
 
 user_state = {}
+waiting_for_issue = set()
 
 def get_ton_price():
     try:
         url = "https://api.coingecko.com/api/v3/simple/price"
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
         params = {"ids": "the-open-network", "vs_currencies": "usd"}
-        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response = requests.get(url, params=params)
         data = response.json()
         return float(data["the-open-network"]["usd"])
-    except Exception as e:
-        print(f"Ошибка при получении курса TON: {e}")
+    except:
         return None
 
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Fragment Store", callback_data="fragment")],
@@ -38,13 +40,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-async def select_store_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await start(update, context)
+# Команда /select_store
+async def handle_select_store(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("Fragment Store", callback_data="fragment")],
+        [InlineKeyboardButton("Telegram Store", callback_data="store")]
+    ]
+    await update.message.reply_text(
+        "Выбери магазин:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-async def change_direction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Команда /change_direction
+async def handle_change_direction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_state or "store" not in user_state[user_id]:
-        await update.message.reply_text("Сначала выбери магазин с помощью /select_store")
+        await update.message.reply_text("Сначала выбери магазин через /select_store.")
         return
 
     keyboard = [
@@ -56,6 +67,7 @@ async def change_direction_command(update: Update, context: ContextTypes.DEFAULT
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# Выбор магазина
 async def handle_store_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -72,25 +84,46 @@ async def handle_store_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# Выбор направления
 async def handle_direction_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     direction = query.data
     user_id = query.from_user.id
-
     if user_id in user_state:
         user_state[user_id]["direction"] = direction
         await query.edit_message_text("Введи количество:")
     else:
         await query.edit_message_text("Сначала выбери магазин через /start")
 
+# Команда /issue — включить режим ввода обращения
+async def issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    waiting_for_issue.add(user_id)
+    await update.message.reply_text("Напиши сообщение для разработчика — пожелание или описание проблемы.")
+
+# Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
-    if user_id not in user_state or "store" not in user_state[user_id] or "direction" not in user_state[user_id]:
-        await update.message.reply_text("Пожалуйста, начни с команды /start и выбери магазин и направление.")
+    # Если ожидается сообщение для разработчика
+    if user_id in waiting_for_issue:
+        user = update.message.from_user
+        text = update.message.text
+        await context.bot.send_message(
+            chat_id=DEVELOPER_ID,
+            text=f"Обращение от @{user.username or 'без имени'} (ID: {user.id}):\n{text}"
+        )
+        await update.message.reply_text("Сообщение отправлено разработчику!")
+        waiting_for_issue.remove(user_id)
         return
 
+    # Если пользователь не выбрал магазин и направление
+    if user_id not in user_state or "store" not in user_state[user_id] or "direction" not in user_state[user_id]:
+        await update.message.reply_text("Сначала выбери магазин и направление через /start.")
+        return
+
+    # Конвертация
     try:
         amount = float(update.message.text.replace(',', '.'))
     except ValueError:
@@ -99,7 +132,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ton_price = get_ton_price()
     if ton_price is None:
-        await update.message.reply_text("Не удалось получить курс TON. Попробуйте позже.")
+        await update.message.reply_text("Не удалось получить курс TON.")
         return
 
     data = user_state[user_id]
@@ -117,27 +150,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = f"{amount} TON по {store} ≈ {total_usd:.2f} $ ≈ {total_stars:.0f} звёзд"
 
     await update.message.reply_text(result)
- # Обработка сообщений от пользователя разработчику
-async def issue(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    text = update.message.text.replace("/issue", "").strip()
-    if not text:
-        await update.message.reply_text("Напиши проблему после команды /issue.")
-        return
-    message = f"Сообщение от @{user.username or user.id} (ID: {user.id}):\n{text}"
-    await context.bot.send_message(chat_id=developer_id, text=message)
-    await update.message.reply_text("Спасибо! Я передал сообщение разработчику.")
+
+# Запуск
 def main():
-    app = ApplicationBuilder().token("7612436248:AAGSzcdng_0HsCwk9WzjqG_rOveZzV-0dGI").build()
+    application = Application.builder().token("7612436248:AAGSzcdng_0HsCwk9WzjqG_rOveZzV-0dGI").build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("select_store", select_store_command))
-    app.add_handler(CommandHandler("change_direction", change_direction_command))
-    app.add_handler(CallbackQueryHandler(handle_store_choice, pattern="^(fragment|store)$"))
-    app.add_handler(CallbackQueryHandler(handle_direction_choice, pattern="^(stars_to_ton|ton_to_stars)$"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("select_store", handle_select_store))
+    application.add_handler(CommandHandler("change_direction", handle_change_direction))
+    application.add_handler(CommandHandler("issue", issue))
 
-    app.run_polling()
+    application.add_handler(CallbackQueryHandler(handle_store_choice, pattern="^(fragment|store)$"))
+    application.add_handler(CallbackQueryHandler(handle_direction_choice, pattern="^(stars_to_ton|ton_to_stars)$"))
+
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
