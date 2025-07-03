@@ -172,7 +172,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Запуск
 def main():
-    application = Application.builder().token("7612436248:AAGSzcdng_0HsCwk9WzjqG_rOveZzV-0dGI").build()
+    application = Application.builder().token("7612436248:AAGC7q5wLLs7_plfhoKL9JMPD4zvkZq1Tx8").build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("select_store", handle_select_store))
